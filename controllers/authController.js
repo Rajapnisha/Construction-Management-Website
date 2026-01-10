@@ -11,17 +11,43 @@ exports.register = async (req, res) => {
     try {
         const { name, email, password, role, employeeType } = req.body;
 
-        // If no role is provided, default to engineer (for public registration compatibility)
-        // Ideally we should check if req.user is an engineer to allow creating other roles,
-        // but for now we trust the client as requested to just fix it.
+        // Check for creator (Logged in user creating another user)
+        let createdBy = undefined;
+        let creatorRole = undefined;
+
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+            try {
+                const token = req.headers.authorization.split(' ')[1];
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                const creator = await User.findById(decoded.id);
+                if (creator) {
+                    createdBy = creator._id;
+                    creatorRole = creator.role;
+                }
+            } catch (error) {
+                // Invalid token, ignore
+            }
+        }
+
         const userRole = role || 'engineer';
+
+        // Public registration for Engineers is now ENABLED.
+        // if (userRole === 'engineer') {
+        //     if (!createdBy || creatorRole !== 'admin') {
+        //         return res.status(403).json({
+        //             status: 'fail',
+        //             message: 'Public registration is disabled. Engineers can only be created by an Admin.'
+        //         });
+        //     }
+        // }
 
         const user = await User.create({
             name,
             email,
             password,
             role: userRole,
-            employeeType: userRole === 'employee' ? employeeType : undefined
+            employeeType: userRole === 'employee' ? employeeType : undefined,
+            createdBy
         });
         const token = signToken(user._id);
 
@@ -64,7 +90,8 @@ exports.login = async (req, res) => {
                     address: user.address || '',
                     city: user.city || '',
                     state: user.state || '',
-                    zipCode: user.zipCode || ''
+                    zipCode: user.zipCode || '',
+                    createdBy: user.createdBy
                 }
             }
         });
@@ -72,16 +99,24 @@ exports.login = async (req, res) => {
         res.status(400).json({ status: 'info', message: err.message });
     }
 };
+
 exports.getUsers = async (req, res) => {
     try {
         const { role } = req.query;
-        const filter = role ? { role } : {};
+        let filter = role ? { role } : {};
+
+        // If Engineer, only show Clients created by them. Employees are visible to all.
+        if (req.user.role === 'engineer' && role === 'client') {
+            filter.createdBy = req.user.id;
+        }
+
         const users = await User.find(filter).select('-password');
         res.status(200).json({
             status: 'success',
             data: { users }
         });
     } catch (err) {
+        res.status(400).json({ status: 'fail', message: err.message });
     }
 };
 
@@ -91,7 +126,7 @@ exports.updateProfile = async (req, res) => {
         const { name, email, profileImage, phoneNumber, address, city, state, zipCode, password } = req.body;
 
         // Permission Check: Allow if user is updating their own profile OR user is an engineer
-        if (req.user.id !== id && req.user.role !== 'engineer') {
+        if (req.user.id !== id && req.user.role !== 'engineer' && req.user.role !== 'admin') {
             return res.status(403).json({ message: 'Not authorized to update this profile' });
         }
 
@@ -115,8 +150,8 @@ exports.updateProfile = async (req, res) => {
         }
 
         if (req.file) {
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
-            user.profileImage = `${baseUrl}/uploads/${req.file.filename}`;
+            // Save relative path
+            user.profileImage = `uploads/${req.file.filename}`;
         } else if (profileImage) {
             // Allow updating via URL string if provided and no file uploaded
             user.profileImage = profileImage;

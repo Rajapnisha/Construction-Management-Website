@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     role: {
         type: String,
-        enum: ['engineer', 'employee', 'client'],
+        enum: ['admin', 'engineer', 'employee', 'client'],
         required: true
     },
     // Only for employees
@@ -23,7 +23,8 @@ const userSchema = new mongoose.Schema({
     address: { type: String },
     city: { type: String },
     state: { type: String },
-    zipCode: { type: String }
+    zipCode: { type: String },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
 userSchema.pre('save', async function () {

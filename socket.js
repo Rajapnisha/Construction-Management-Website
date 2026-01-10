@@ -31,6 +31,7 @@ module.exports = (io) => {
                 if (!project) return socket.emit('error', 'Project not found');
 
                 const isAllowed =
+                    socket.user.role === 'admin' ||
                     project.engineer.equals(socket.user._id) ||
                     project.client.equals(socket.user._id) ||
                     project.employees.includes(socket.user._id);

@@ -62,8 +62,9 @@ exports.postUpdate = async (req, res) => {
 
         const isSelfEngineer = project.engineer.equals(req.user._id);
         const isAssignedEmployee = project.employees.includes(req.user._id);
+        const isAdmin = req.user.role === 'admin';
 
-        if (!isSelfEngineer && !isAssignedEmployee) {
+        if (!isSelfEngineer && !isAssignedEmployee && !isAdmin) {
             return res.status(403).json({ message: 'Not authorized to post updates to this project' });
         }
 
@@ -77,6 +78,11 @@ exports.postUpdate = async (req, res) => {
             image,
             video
         });
+
+        // Emit Socket Event
+        const io = req.app.get('io');
+        const populatedUpdate = await update.populate('postedBy', 'name role employeeType');
+        io.to(projectId).emit('newReport', populatedUpdate);
 
         res.status(201).json({ status: 'success', data: { update } });
     } catch (err) {
@@ -93,6 +99,7 @@ exports.getProjectUpdates = async (req, res) => {
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
         const isAllowed =
+            req.user.role === 'admin' ||
             project.engineer.equals(req.user._id) ||
             project.client.equals(req.user._id) ||
             project.employees.includes(req.user._id);
@@ -144,23 +151,48 @@ exports.getDashboardStats = async (req, res) => {
         if (req.user.role === 'engineer') projectFilter = { engineer: req.user._id };
         if (req.user.role === 'client') projectFilter = { client: req.user._id };
         if (req.user.role === 'employee') projectFilter = { employees: req.user._id };
+        // Admin gets all projects (empty filter)
 
         const activeProjects = await Project.countDocuments(projectFilter);
 
-        // Get Clients Count (Only for Engineer)
-        let clientsCount = 0;
+        let stats = { activeProjects };
+
         if (req.user.role === 'engineer') {
-            // Count unique clients across all projects owned by this engineer
-            // Or better, simply count all Users with role='client' (assuming simplified model where engineer sees all clients)
-            clientsCount = await User.countDocuments({ role: 'client' });
+            stats.clientsCount = await User.countDocuments({ role: 'client', createdBy: req.user._id });
+            // Also count employees for engineer? Maybe later.
+        } else if (req.user.role === 'admin') {
+            stats.totalUsers = await User.countDocuments();
+            stats.engineersCount = await User.countDocuments({ role: 'engineer' });
+            stats.clientsCount = await User.countDocuments({ role: 'client' });
+            stats.employeesCount = await User.countDocuments({ role: 'employee' });
+
+            // Fetch Recent Activity
+            const recentProjects = await Project.find().sort('-createdAt').limit(3).populate('engineer', 'name');
+            const recentUsers = await User.find().sort('-createdAt').limit(3);
+
+            // Construct Activity Feed
+            let activity = [];
+            recentProjects.forEach(p => activity.push({
+                type: 'project',
+                message: `New Project: ${p.projectName}`,
+                sub: `Created by ${p.engineer?.name}`,
+                date: p.createdAt
+            }));
+            recentUsers.forEach(u => activity.push({
+                type: 'user',
+                message: `New User: ${u.name}`,
+                sub: `Role: ${u.role}`,
+                date: u.createdAt
+            }));
+
+            // Sort by date desc and take top 5
+            activity.sort((a, b) => new Date(b.date) - new Date(a.date));
+            stats.recentActivity = activity.slice(0, 5);
         }
 
         res.status(200).json({
             status: 'success',
-            data: {
-                activeProjects,
-                clientsCount
-            }
+            data: stats
         });
     } catch (err) {
         res.status(400).json({ status: 'info', message: err.message });

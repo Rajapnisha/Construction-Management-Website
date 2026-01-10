@@ -20,7 +20,7 @@ const upload = multer({ storage });
 
 router.post('/register', authController.register);
 router.post('/login', authController.login);
-router.get('/users', authController.getUsers);
+router.get('/users', protect, authController.getUsers);
 router.put('/update/:id', protect, upload.single('profileImage'), authController.updateProfile);
 router.get('/me', protect, authController.getMe);
 

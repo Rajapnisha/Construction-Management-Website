@@ -19,7 +19,9 @@ const chatSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     },
-    message: { type: String, required: true }
+    message: { type: String, required: false }, // Made optional for image-only messages
+    image: { type: String }, // Path to uploaded image
+    isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Chat', chatSchema);
