@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 
-const { protect } = require('../middleware/authMiddleware');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 const multer = require('multer');
 const path = require('path');
@@ -22,6 +22,7 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.get('/users', protect, authController.getUsers);
 router.put('/update/:id', protect, upload.single('profileImage'), authController.updateProfile);
+router.delete('/users/:id', protect, authorize('admin', 'engineer'), authController.deleteUser);
 router.get('/me', protect, authController.getMe);
 
 module.exports = router;

@@ -25,21 +25,20 @@ exports.register = async (req, res) => {
                     creatorRole = creator.role;
                 }
             } catch (error) {
-                // Invalid token, ignore
+                // Invalid token
             }
         }
 
-        const userRole = role || 'engineer';
+        // STRICT ADMIN ONLY:
+        // Only Admin can create users. Public registration is DISABLED.
+        if (creatorRole !== 'admin') {
+            return res.status(403).json({
+                status: 'fail',
+                message: 'Access denied. Only Admins can create new users.'
+            });
+        }
 
-        // Public registration for Engineers is now ENABLED.
-        // if (userRole === 'engineer') {
-        //     if (!createdBy || creatorRole !== 'admin') {
-        //         return res.status(403).json({
-        //             status: 'fail',
-        //             message: 'Public registration is disabled. Engineers can only be created by an Admin.'
-        //         });
-        //     }
-        // }
+        const userRole = role || 'engineer';
 
         const user = await User.create({
             name,
@@ -60,6 +59,7 @@ exports.register = async (req, res) => {
         res.status(400).json({ status: 'fail', message: err.message });
     }
 };
+
 
 exports.login = async (req, res) => {
     try {
@@ -212,6 +212,35 @@ exports.getMe = async (req, res) => {
                     zipCode: user.zipCode
                 }
             }
+        });
+    } catch (err) {
+        res.status(400).json({ status: 'fail', message: err.message });
+    }
+};
+
+exports.deleteUser = async (req, res) => {
+    try {
+        const userToDelete = await User.findById(req.params.id);
+
+        if (!userToDelete) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Permission Logic
+        // Admin: Can delete anyone (except maybe themselves, but let's allow it or handle in frontend)
+        // Engineer: Can delete Clients & Employees. CANNOT delete Admin or other Engineers.
+
+        if (req.user.role === 'engineer') {
+            if (userToDelete.role === 'admin' || userToDelete.role === 'engineer') {
+                return res.status(403).json({ message: 'Engineers cannot delete Admins or other Engineers' });
+            }
+        }
+
+        await User.findByIdAndDelete(req.params.id);
+
+        res.status(204).json({
+            status: 'success',
+            data: null
         });
     } catch (err) {
         res.status(400).json({ status: 'fail', message: err.message });

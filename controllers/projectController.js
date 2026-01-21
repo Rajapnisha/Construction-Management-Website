@@ -28,6 +28,40 @@ exports.createProject = async (req, res) => {
     }
 };
 
+// Admin & Engineer: Update Project
+exports.updateProject = async (req, res) => {
+    try {
+        const { projectName, amount, location, client } = req.body;
+        let updateData = { projectName, amount, location, client };
+
+        if (req.files && req.files['projectImage']) {
+            updateData.projectImage = req.files['projectImage'][0].path;
+        }
+        if (req.files && req.files['blueprint']) {
+            updateData.blueprint = req.files['blueprint'][0].path;
+        }
+
+        const project = await Project.findByIdAndUpdate(req.params.id, updateData, { new: true });
+
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        res.status(200).json({ status: 'success', data: { project } });
+    } catch (err) {
+        res.status(400).json({ status: 'info', message: err.message });
+    }
+};
+
+// Admin & Engineer: Delete Project
+exports.deleteProject = async (req, res) => {
+    try {
+        const project = await Project.findByIdAndDelete(req.params.id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+        res.status(204).json({ status: 'success', data: null });
+    } catch (err) {
+        res.status(400).json({ status: 'info', message: err.message });
+    }
+};
+
 // Engineer: Assign Employees to Project
 exports.assignEmployees = async (req, res) => {
     try {
@@ -85,6 +119,67 @@ exports.postUpdate = async (req, res) => {
         io.to(projectId).emit('newReport', populatedUpdate);
 
         res.status(201).json({ status: 'success', data: { update } });
+    } catch (err) {
+        res.status(400).json({ status: 'info', message: err.message });
+    }
+};
+
+// Update Daily Update (Author or Admin/Engineer)
+exports.updateUpdate = async (req, res) => {
+    try {
+        const { message } = req.body;
+        const updateId = req.params.id;
+
+        const update = await Update.findById(updateId);
+        if (!update) return res.status(404).json({ message: 'Update not found' });
+
+        // Check Permissions: Author OR Admin OR Engineer of the project
+        // We need to fetch the project to check Engineer
+        const project = await Project.findById(update.project);
+
+        const isAuthor = update.postedBy.equals(req.user._id);
+        const isAdmin = req.user.role === 'admin';
+        const isEngineer = project && project.engineer.equals(req.user._id);
+
+        if (!isAuthor) {
+            return res.status(403).json({ message: 'Not authorized to update this report' });
+        }
+
+        update.message = message || update.message;
+
+        if (req.files && req.files['image']) {
+            update.image = req.files['image'][0].path;
+        }
+        if (req.files && req.files['video']) {
+            update.video = req.files['video'][0].path;
+        }
+
+        await update.save();
+        const populatedUpdate = await update.populate('postedBy', 'name role employeeType');
+
+        res.status(200).json({ status: 'success', data: { update: populatedUpdate } });
+    } catch (err) {
+        res.status(400).json({ status: 'info', message: err.message });
+    }
+};
+
+// Delete Daily Update (Admin or Engineer)
+exports.deleteUpdate = async (req, res) => {
+    try {
+        const update = await Update.findById(req.params.id);
+        if (!update) return res.status(404).json({ message: 'Update not found' });
+
+        const project = await Project.findById(update.project);
+
+        const isAdmin = req.user.role === 'admin';
+        const isEngineer = project && project.engineer.equals(req.user._id);
+
+        if (!isAdmin && !isEngineer) {
+            return res.status(403).json({ message: 'Not authorized to delete this report' });
+        }
+
+        await Update.findByIdAndDelete(req.params.id);
+        res.status(204).json({ status: 'success', data: null });
     } catch (err) {
         res.status(400).json({ status: 'info', message: err.message });
     }
