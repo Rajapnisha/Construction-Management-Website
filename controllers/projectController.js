@@ -141,7 +141,7 @@ exports.updateUpdate = async (req, res) => {
         const isAdmin = req.user.role === 'admin';
         const isEngineer = project && project.engineer.equals(req.user._id);
 
-        if (!isAuthor) {
+        if (!isAuthor && !isAdmin && !isEngineer) {
             return res.status(403).json({ message: 'Not authorized to update this report' });
         }
 
