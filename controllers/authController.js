@@ -29,16 +29,29 @@ exports.register = async (req, res) => {
             }
         }
 
-        // STRICT ADMIN ONLY:
-        // Only Admin can create users. Public registration is DISABLED.
-        if (creatorRole !== 'admin') {
+        // Public registration is disabled. Only Admin/Engineer can create users.
+        if (!creatorRole) {
             return res.status(403).json({
                 status: 'fail',
-                message: 'Access denied. Only Admins can create new users.'
+                message: 'Access denied. Please login to create new users.'
             });
         }
 
         const userRole = role || 'engineer';
+
+        if (creatorRole === 'engineer' && userRole !== 'client') {
+            return res.status(403).json({
+                status: 'fail',
+                message: 'Access denied. Engineers can only create Client users.'
+            });
+        }
+
+        if (creatorRole !== 'admin' && creatorRole !== 'engineer') {
+            return res.status(403).json({
+                status: 'fail',
+                message: 'Access denied. You are not allowed to create users.'
+            });
+        }
 
         const user = await User.create({
             name,
